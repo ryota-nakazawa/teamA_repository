@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.3.4/axios.min.js"></script>
+  <title>音声認識させてそのままChat GPTに送る</title>
+  <!-- <link rel="stylesheet" href="style.css"> -->
+</head>
+
+<body>
+  <main>
+    <style>
+      /* video要素のコントロールバー全体を非表示にするスタイル */
+      video::-webkit-media-controls {
+        display: none !important;
+      }
+
+      video {
+        outline: none;
+        /* フォーカス時の枠を非表示にするために追加 */
+      }
+
+    </style>
+
+    </style>
+    <video id="myVideo" src="./movie/test_movie1.mp4" muted controls width="500px" height="500px"></video>
+    <div>
+      <button class="start">Start Recognition</button>
+      <button class="stop">Stop Recognition</button>
+    </div>
+    <div>
+      <textarea name="talk" id="talk"></textarea>
+      <button class="send">Send to ChatGPT</button>
+    </div>
+    <div class="output"></div>
+    <audio class="audio"></audio>
+  </main>
+  <script>
+    const recognition = new webkitSpeechRecognition();
+    recognition.lang = "ja";
+    recognition.continuous = true;
+    var video = document.getElementById("myVideo");
+
+    recognition.onresult = ({ results }) => {
+      const output = document.querySelector(".output");
+      // output.textContent = results[0][0].transcript;
+
+      const talkTextarea = document.getElementById("talk");
+      talkTextarea.value += results[0][0].transcript + ' ';
+    };
+
+    const startButton = document.querySelector(".start");
+    startButton.addEventListener("click", () => {
+      recognition.start();
+    });
+
+    const stopButton = document.querySelector(".stop");
+    stopButton.addEventListener("click", () => {
+      recognition.stop();
+    });
+
+    const sendButton = document.querySelector(".send");
+    sendButton.addEventListener("click", async () => {
+      const text = document.getElementById("talk").value;
+      const responseText = await requestChatAPI(text);
+      const output = document.querySelector(".output");
+      output.textContent = responseText;
+      const talkTextarea = document.getElementById("talk");
+      talkTextarea.value = ' ';
+      stopVideo()
+    });
+
+    async function requestChatAPI(text) {
+      const api_key = "Your API key";
+      const headers = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${api_key}`,
+      };
+
+      const messages = [{
+        role: "user",
+        content: text,
+      }];
+
+      const payload = {
+        model: "gpt-3.5-turbo",
+        max_tokens: 128,
+        messages: messages,
+      };
+
+      try {
+        const response = await axios.post(
+          "https://api.openai.com/v1/chat/completions",
+          payload,
+          { headers: headers }
+        );
+        const responseText = response.data.choices[0].message.content;
+        createAudio(responseText);  // createAudioを呼び出す
+        return responseText;
+      } catch (error) {
+        console.error("Error making ChatGPT API request:", error);
+        return "Error occurred. Please try again.";
+      }
+
+      async function createAudio(text) {
+        const data = await createVoice(text);
+        const audio = document.querySelector(".audio");
+        audio.src = URL.createObjectURL(data);
+        audio.play();
+        startVideo()
+      }
+
+      async function createQuery(text) {
+        const response = await axios.post(
+          `http://localhost:50021/audio_query?speaker=4&text=${text}`
+        );
+        return response.data;
+      }
+      async function createVoice(text) {
+        const query = await createQuery(text);
+        const response = await axios.post(
+          "http://localhost:50021/synthesis?speaker=4",
+          query,
+          { responseType: "blob" }
+        );
+        return response.data;
+      }
+    }
+
+    function startVideo() {
+      video.play();
+    }
+
+    // function stopVideo() {
+    //   video.pause();
+    // }
+  </script>
+</body>
+
+</html>
